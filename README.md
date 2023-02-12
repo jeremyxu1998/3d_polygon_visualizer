@@ -2,7 +2,7 @@
 This program is to complete software assessment for Neocis.
 
 ## Environment Setup
-I choose Python for its fast prototyping capability. Packages used:
+I choose Python because of its fast prototyping capability and efficient numpy library for matrix operations (thus the operations are vectorized as much as possible). Packages used:
 ```
 numpy
 bokeh
@@ -13,6 +13,7 @@ To run part 1: <br>
 `bokeh serve --show main.py`
 
 To run part 2: <br>
+`bokeh serve --show main.py --args --render_mode surface`
 
 ## Part 1
 Because the observer/camera is at infinite distance, parallel projection is applied to the canvas. We use rotation matrix to calculate the current 3D location of each vertex, and the x and y values are the coordinate on the canvas.
@@ -33,3 +34,4 @@ Therefore, I choose the Python callback method, with its ["Single module format"
 The callback function is defined in `Window` class, and is called when the mouse is dragged. The callback function will transfer `delta_x` and `delta_y` to the rotation angle, and use rotation matrices to calculate the new 3D location of each vertex, then update the [ColumnDataSource](https://docs.bokeh.org/en/latest/docs/user_guide/data.html#providing-data-as-a-columndatasource) for elements in the plot. The re-plotting will be triggered automatically. To ensure the same rotation scale among each drag, an accumulated rotation matrix is stored, and updated at each `PanEnd` event.
 
 ## Part 2
+Because the polygon only contains triangle surfaces, each surface is either entirely visible to camera, or entirely facing backwards (cannot be partially visible).
