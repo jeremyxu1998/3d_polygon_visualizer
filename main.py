@@ -1,6 +1,8 @@
 import numpy as np
 import argparse
-from bokeh.plotting import figure, show
+
+from bokeh.plotting import figure, curdoc
+from bokeh.layouts import column
 from bokeh.models import Range1d, ColumnDataSource, Scatter
 
 
@@ -48,24 +50,49 @@ class Polygon:
 class Window:
     def __init__(self, polygon, args):
         self.render_mode = args.render_mode
+        self.fill_scale = 1.5
         
-        self.polygon: Polygon = polygon
-        self.rot_matrix = np.eye(3)
+        self.rot_matrix = np.eye(3)  # current object rotation WRT coordinate at initialization
+        self.accu_rot_matrix = np.eye(3)  # accumulated rotation matrix from past mouse drags
+        self.dist_to_ang = 0.01  # mouse pan distance on screen (pixel) to angle of rotation (rad)
+                                 # at this default setting, dragging across window width will rotate object for ~360 deg
+        
         self.graph = figure(title = "3D Polygon Visualizer", width=args.width, height=args.height)
+        self.graph.toolbar.active_drag = None  # disable original pan tool
+        self.graph.on_event("pan", self.on_pan)  # custom pan callback to rotate the polygon
+        self.graph.on_event("panend", self.on_pan_end)
+
+        self.polygon: Polygon = polygon
+        self.init_source()
+
+        curdoc().add_root(column(self.graph))  # add the plot to the document, initialize the window
     
-    def update(self):
+    def init_source(self):
+        """initialize all Bokeh data source"""
         coord_2d = self.project_to_canvas()
-        # set coordinate range
+        # set plotting coordinate range
         max_coord = np.max(np.abs(coord_2d))
-        fill_scale = 1.25
-        self.graph.x_range = Range1d(-max_coord*fill_scale, max_coord*fill_scale)
-        self.graph.y_range = Range1d(-max_coord*fill_scale, max_coord*fill_scale)
+        self.graph.x_range = Range1d(-max_coord*self.fill_scale, max_coord*self.fill_scale)
+        self.graph.y_range = Range1d(-max_coord*self.fill_scale, max_coord*self.fill_scale)
 
         if self.render_mode == "frame":
-            self.plot_wireframe(coord_2d)
+            self.vertex_source = ColumnDataSource(data=dict(x=coord_2d[1:, 0], y=coord_2d[1:, 1]))
+            self.vertex_glyph = Scatter(x="x", y="y", size=10, fill_color="#0000ff", marker="circle")
+            self.graph.add_glyph(self.vertex_source, self.vertex_glyph)
+
+            all_3d_edges = self.polygon.get_edges()
+            edge_source_dict = {}
+            for i, edge_ids in enumerate(all_3d_edges):
+                edge_2d = coord_2d[edge_ids]  # (start & end, x & y)
+                edge_source_dict['x'+str(i)] = edge_2d[:, 0]
+                edge_source_dict['y'+str(i)] = edge_2d[:, 1]
+
+            self.edge_source = ColumnDataSource(data=edge_source_dict)
+            for i in range(len(all_3d_edges)):
+                self.graph.line(x='x'+str(i), y='y'+str(i), source=self.edge_source, line_width=5, line_color="#0000ff")
+        
         elif self.render_mode == "surface":
             pass
-        show(self.graph)
 
     def project_to_canvas(self):
         """Project 3D vertices to 2D using rotation matrix applied from window"""
@@ -73,24 +100,48 @@ class Window:
         cur_2d_coord = cur_vertices[:, :2]
         return cur_2d_coord
     
-    def plot_wireframe(self, coord_2d):
-        vertex_source = ColumnDataSource(dict(x=coord_2d[1:, 0], y=coord_2d[1:, 1]))
-        vertex_glyph = Scatter(x="x", y="y", size=10, fill_color="#0000ff", marker="circle")
-        self.graph.add_glyph(vertex_source, vertex_glyph)
-        
-        for edge_ids in self.polygon.get_edges():
-            edge = coord_2d[edge_ids]
-            self.graph.line(edge[:, 0], edge[:, 1], line_width=5, line_color="#0000ff")
+    def on_pan(self, event):
+        """Rotate the polygon when the user pans the window"""
+        # print("delta_x:", event.delta_x)
+        # print("delta_y:", event.delta_y)
+        angle_x = event.delta_y * self.dist_to_ang  # rotation around x-axis depends on mouse drag distance along y-axis
+        angle_y = event.delta_x * self.dist_to_ang
+        rot_mat_x = np.array([[1, 0, 0],
+                              [0, np.cos(angle_x), -np.sin(angle_x)],
+                              [0, np.sin(angle_x), np.cos(angle_x)]])
+        rot_mat_y = np.array([[np.cos(angle_y), 0, np.sin(angle_y)],
+                              [0, 1, 0],
+                              [-np.sin(angle_y), 0, np.cos(angle_y)]])
+        # within one drag action, the rotation matrix is based on the accumulated rotation matrix
+        self.rot_matrix = np.matmul(np.matmul(rot_mat_x, rot_mat_y), self.accu_rot_matrix)
+
+        # update the Bokeh data source
+        coord_2d = self.project_to_canvas()
+        self.vertex_source.data = dict(x=coord_2d[1:, 0], y=coord_2d[1:, 1])
+
+        all_3d_edges = self.polygon.get_edges()
+        new_edge_source_dict = {}
+        for i, edge_ids in enumerate(all_3d_edges):
+            edge_2d = coord_2d[edge_ids]
+            new_edge_source_dict['x'+str(i)] = edge_2d[:, 0]
+            new_edge_source_dict['y'+str(i)] = edge_2d[:, 1]
+        self.edge_source.data = new_edge_source_dict
+    
+    def on_pan_end(self, event):
+        """After user finishes one mouse drag,
+        update the accumulated rotation to current rotation,
+        then reset the self.rot_matrix to identity"""
+        self.accu_rot_matrix = self.rot_matrix
+        self.rot_matrix = np.eye(3)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--obj_path", type=str, default="data/tetrahedron.txt")
-    parser.add_argument("--render_mode", type=str, default="frame", choices=["frame", "surface"])
-    parser.add_argument("--width", type=int, default=600)
-    parser.add_argument("--height", type=int, default=600)
-    args = parser.parse_args()
+# Main function below, but cannot use `if __name__ == "__main__":` because Bokeh run won't trigger it
+parser = argparse.ArgumentParser()
+parser.add_argument("--obj_path", type=str, default="data/tetrahedron.txt")
+parser.add_argument("--render_mode", type=str, default="frame", choices=["frame", "surface"])
+parser.add_argument("--width", type=int, default=600)
+parser.add_argument("--height", type=int, default=600)
+args = parser.parse_args()
 
-    polygon = Polygon(args.obj_path)
-    window = Window(polygon, args)
-    window.update()
+polygon = Polygon(args.obj_path)
+window = Window(polygon, args)
