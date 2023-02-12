@@ -66,7 +66,7 @@ class Polygon:
 class Window:
     def __init__(self, polygon, args):
         self.render_mode = args.render_mode
-        self.fill_scale = 1.5
+        self.fill_scale = args.fill_scale
         self.color_0 = 255.0  # 0xff, when surface orthogonal to z-axis
         self.color_90 = 95.0  # 0x5f, when surface perpendicular to z-axis
         
@@ -185,6 +185,7 @@ parser.add_argument("--obj_path", type=str, default="data/octahedron.txt")
 parser.add_argument("--render_mode", type=str, default="frame", choices=["frame", "surface"])
 parser.add_argument("--width", type=int, default=600)
 parser.add_argument("--height", type=int, default=600)
+parser.add_argument("--fill_scale", type=float, default=1.5)
 args = parser.parse_args()
 
 polygon = Polygon(args.obj_path)
