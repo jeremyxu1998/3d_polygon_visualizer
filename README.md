@@ -1,5 +1,5 @@
 # 3D Polygon Visualizer
-This program is to complete software assessment for Neocis.
+This program is to complete software assessment for Neocis. The key challenge is to use 2D plotting functions only to achieve 3D plotting, with basic user interaction functionality.
 
 ## Environment Setup
 I choose Python because of its fast prototyping capability and efficient numpy library for matrix operations (thus the operations are vectorized as much as possible). Packages used:
